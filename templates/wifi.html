@@ -1,0 +1,405 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=500">
+  <meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" name="viewport" />
+  <title>WiFi Settings</title>
+  <script>
+    var scanLoops = 0, preScanSSID = "";
+
+    function scanWifi() {
+      const url = "/json/net";
+      const button = document.getElementById("scan");
+      button.disabled = true;
+      button.innerHTML = "Scanning...";
+
+      fetch(url).then((response) => {
+        return response.json();
+      }).then((json) => {
+        // Get the list of networks only, defaulting to an empty array.
+        return Object.assign(
+          {},
+          { "networks": [] },
+          json,
+        ).networks.sort(
+          // Sort by signal strength, descending.
+          (a, b) => b.rssi - a.rssi
+        ).reduce(
+          // Filter out duplicate SSIDs. Since it is sorted by signal
+          // strength, the strongest signal will be kept in the
+          // order it orginally appeared in the array.
+          (unique, other) => {
+            if (!unique.some(obj => obj.ssid === other.ssid)) {
+              unique.push(other);
+            }
+            return unique;
+          },
+          [],
+        );
+      }).then((networks) => {
+        // If there are no networks, fetch it again in a second.
+        // but only do this a few times.
+        if (networks.length === 0 && scanLoops < 10) {
+          scanLoops++;
+          setTimeout(scanWifi, 1000);
+          return;
+        }
+        scanLoops = 0;
+
+        let cs = document.getElementById("CS");
+        if (cs) {
+          let select = document.createElement("select");
+          select.setAttribute("id", "CS");
+          select.setAttribute("name", "CS");
+          select.setAttribute("onchange", "T()");
+          preScanSSID = cs.value;
+
+          for (let i = 0; i < select.children.length; i++) {
+            select.removeChild(select.children[i]);
+          }
+
+          for (let i = 0; i < networks.length; i++) {
+            const option = document.createElement("option");
+
+            option.setAttribute("value", networks[i].ssid);
+            option.innerHTML = `${networks[i].ssid} (${networks[i].rssi} dBm)`;
+
+            if (networks[i].ssid === cs.value) {
+              option.setAttribute("selected", "selected");
+            }
+
+            select.appendChild(option);
+          }
+          const option = document.createElement("option");
+
+          option.setAttribute("value", "!Cs");
+          option.innerHTML = `Other network...`;
+          select.appendChild(option);
+
+          cs.replaceWith(select);
+        }
+
+        button.disabled = false;
+        button.innerHTML = "Scan";
+      });
+    }
+    // replace WiFi select with custom SSID input field again
+    function T() {
+      let cs = document.getElementById("CS");
+      if (!cs || cs.value != "!Cs") return;
+      let input = document.createElement("input");
+      input.type = "text";
+      input.id = "CS";
+      input.name = "CS";
+      input.setAttribute("maxlength", 32);
+      input.value = preScanSSID;
+      cs.replaceWith(input);
+    }
+
+    window.addEventListener("DOMContentLoaded", () => {
+      document.getElementById("form_s").addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const data = new FormData(event.target);
+        const config = {
+          client: {
+            ssid: data.get("CS"),
+            password: data.get("CP"),
+            ip: [data.get("I0"), data.get("I1"), data.get("I2"), data.get("I3")].map((v) => parseInt(v)),
+            gateway: [data.get("G0"), data.get("G1"), data.get("G2"), data.get("G3")].map((v) => parseInt(v)),
+            subnet_mask: [data.get("S0"), data.get("S1"), data.get("S2"), data.get("S3")].map((v) => parseInt(v)),
+            mdns: data.get("CM")
+          },
+          ap: {
+            ssid: data.get("AS"),
+            password: data.get("AP"),
+            hidden: data.get("AH") == "true",
+            channel: parseInt(data.get("AC")),
+            mode: parseInt(data.get("AB")),
+          }
+        };
+        await fetch("/", {
+          method: "POST",
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify(config),
+        });
+      })
+    })
+  </script>
+  <style>
+    html {
+      touch-action: manipulation;
+    }
+
+    body {
+      font-family: Verdana, sans-serif;
+      font-size: 1rem;
+      text-align: center;
+      background: #222;
+      color: #fff;
+      line-height: 200%;
+      margin: 0;
+    }
+
+    hr {
+      border-color: #666;
+    }
+
+    hr.sml {
+      width: 260px;
+    }
+
+    a,
+    a:hover {
+      color: #28f;
+      text-decoration: none;
+    }
+
+    button,
+    .btn {
+      background: #333;
+      color: #fff;
+      font-family: Verdana, sans-serif;
+      border: 0.3ch solid #333;
+      border-radius: 24px;
+      display: inline-block;
+      font-size: 20px;
+      margin: 12px 8px 8px;
+      padding: 8px 12px;
+      min-width: 48px;
+      cursor: pointer;
+      text-decoration: none;
+    }
+
+    button.sml {
+      padding: 8px;
+      border-radius: 20px;
+      font-size: 15px;
+      min-width: 40px;
+      margin: 0 0 0 10px;
+    }
+
+    #scan {
+      margin-top: -10px;
+    }
+
+    .toprow {
+      top: 0;
+      position: sticky;
+      background-color: #222;
+      z-index: 1;
+    }
+
+    .lnk {
+      border: 0;
+    }
+
+    .helpB {
+      text-align: left;
+      position: absolute;
+      width: 60px;
+    }
+
+    .hide {
+      display: none;
+    }
+
+    input {
+      background: #333;
+      color: #fff;
+      font-family: Verdana, sans-serif;
+      border: 0.5ch solid #333;
+    }
+
+    input:disabled {
+      color: #888;
+    }
+
+    input[type="text"],
+    input[type="number"],
+    select {
+      font-size: medium;
+      margin: 2px;
+    }
+
+    input[type="number"] {
+      width: 4em;
+    }
+
+    input[type="number"].xxl {
+      width: 100px;
+    }
+
+    input[type="number"].xl {
+      width: 85px;
+    }
+
+    input[type="number"].l {
+      width: 64px;
+    }
+
+    input[type="number"].m {
+      width: 56px;
+    }
+
+    input[type="number"].s {
+      width: 48px;
+    }
+
+    input[type="number"].xs {
+      width: 40px;
+    }
+
+    input[type="checkbox"] {
+      transform: scale(1.5);
+      margin-right: 10px;
+    }
+
+    td input[type="checkbox"] {
+      margin-right: revert;
+    }
+
+    input[type=file] {
+      font-size: 16px
+    }
+
+    select {
+      margin: 2px;
+      background: #333;
+      color: #fff;
+      font-family: Verdana, sans-serif;
+      border: 0.5ch solid #333;
+    }
+
+    tr {
+      line-height: 100%;
+    }
+
+    td {
+      padding: 2px;
+    }
+
+    .d5 {
+      width: 4rem !important;
+    }
+
+    .cal {
+      font-size: 1.5rem;
+      cursor: pointer
+    }
+
+    #TMT table {
+      width: 100%;
+    }
+
+    #msg {
+      display: none;
+    }
+
+    #toast {
+      opacity: 0;
+      background-color: #444;
+      border-radius: 5px;
+      bottom: 64px;
+      color: #fff;
+      font-size: 17px;
+      padding: 16px;
+      pointer-events: none;
+      position: fixed;
+      text-align: center;
+      z-index: 5;
+      transform: translateX(-50%);
+      max-width: 90%;
+      left: 50%;
+    }
+
+    #toast.show {
+      opacity: 1;
+      background-color: #264;
+      animation: fadein 0.5s, fadein 0.5s 2.5s reverse;
+    }
+
+    #toast.error {
+      opacity: 1;
+      background-color: #b21;
+      animation: fadein 0.5s;
+    }
+
+    @media screen and (max-width: 767px) {
+
+      input[type="text"],
+      input[type="file"],
+      input[type="number"],
+      input[type="email"],
+      input[type="tel"],
+      input[type="password"] {
+        font-size: 16px;
+      }
+    }
+
+    @media screen and (max-width: 480px) {
+      input[type="number"].s {
+        width: 40px;
+      }
+
+      input[type="number"].xs {
+        width: 32px;
+      }
+
+      input[type="file"] {
+        width: 224px;
+      }
+
+      #btns select {
+        width: 144px;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <form id="form_s" name="Sf" method="post">
+    <h2>WiFi setup</h2>
+    <h3>Connect to existing network</h3>
+    <button type="button" id="scan" onclick="scanWifi()">Scan</button><br>
+    Network name (SSID, empty to not connect):<br>
+    <input type="text" id="CS" name="CS" maxlength="32" value="{{ self.client.ssid }}"><br>
+    Network password: <br> <input type="password" name="CP" maxlength="63" value="{{ self.client.password }}"><br>
+    Static IP (leave at 0.0.0.0 for DHCP):<br>
+    <input name="I0" type="number" class="s" min="0" max="255" required value="{{ self.client.ip[0] }}"> .
+    <input name="I1" type="number" class="s" min="0" max="255" required value="{{ self.client.ip[1] }}"> .
+    <input name="I2" type="number" class="s" min="0" max="255" required value="{{ self.client.ip[2] }}"> .
+    <input name="I3" type="number" class="s" min="0" max="255" required value="{{ self.client.ip[3] }}"><br>
+    Static gateway:<br>
+    <input name="G0" type="number" class="s" min="0" max="255" required value="{{ self.client.gateway[0] }}"> .
+    <input name="G1" type="number" class="s" min="0" max="255" required value="{{ self.client.gateway[1] }}"> .
+    <input name="G2" type="number" class="s" min="0" max="255" required value="{{ self.client.gateway[2] }}"> .
+    <input name="G3" type="number" class="s" min="0" max="255" required value="{{ self.client.gateway[3] }}"><br>
+    Static subnet mask:<br>
+    <input name="S0" type="number" class="s" min="0" max="255" required value="{{ self.client.subnet_mask[0] }}"> .
+    <input name="S1" type="number" class="s" min="0" max="255" required value="{{ self.client.subnet_mask[1] }}"> .
+    <input name="S2" type="number" class="s" min="0" max="255" required value="{{ self.client.subnet_mask[2] }}"> .
+    <input name="S3" type="number" class="s" min="0" max="255" required value="{{ self.client.subnet_mask[3] }}"><br>
+    mDNS address (leave empty for no mDNS):<br>
+    http:// <input type="text" name="CM" maxlength="32" value="{{ self.client.mdns }}"> .local<br>
+    Client IP: <span class="sip"> Not connected </span> <br>
+    <h3>Configure Access Point</h3>
+    AP SSID (leave empty for no AP):<br> <input type="text" name="AS" maxlength="32" value="{{ self.ap.ssid }}"><br>
+    Hide AP name: <input type="checkbox" name="AH", value="true" {% if self.ap.hidden %} checked {% endif %}><br>
+    AP password (leave empty for open):<br> <input type="password" name="AP" maxlength="63" pattern="(.{8,63})|()"
+      title="Empty or min. 8 characters" value="{{ self.ap.password }}"><br>
+    Access Point WiFi channel: <input name="AC" type="number" class="xs" min="1" max="13" required value="{{ self.ap.channel }}"><br>
+    AP opens:
+    <select name="AB">
+      <option value="0" {% if self.ap.mode == ApMode::NoConnOnBoot %} selected {% endif %}>No connection after boot</option>
+      <option value="2" {% if self.ap.mode == ApMode::Always %} selected {% endif %}>Always</option>
+      <option value="3" {% if self.ap.mode == ApMode::Never %} selected {% endif %}>Never (not recommended)</option>
+    </select><br>
+    AP IP: <span class="sip"> Not active </span><br>
+    <hr>
+    <button type="submit">Save & Connect</button>
+  </form>
+</body>
+
+</html>
